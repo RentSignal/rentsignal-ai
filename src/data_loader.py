@@ -164,7 +164,7 @@ def load_rental_data(dong_names):
 
     # 오피스텔
     off = pd.read_csv(data_path / 'officetel_info.csv', encoding='cp949',
-                       skiprows=15, low_memory=False)
+                       low_memory=False)
     off['보증금'] = _parse_price(off['보증금(만원)'])
     off['월세'] = _parse_price(off['월세금(만원)'])
     off['법정동코드'] = off['시군구'].map(addr_to_code)
@@ -172,7 +172,7 @@ def load_rental_data(dong_names):
 
     # 연립다세대 (원룸: 33㎡ 이하)
     mf = pd.read_csv(data_path / 'multi_family_housing_info.csv', encoding='cp949',
-                      skiprows=15, low_memory=False)
+                      low_memory=False)
     mf['보증금'] = _parse_price(mf['보증금(만원)'])
     mf['월세'] = _parse_price(mf['월세금(만원)'])
     mf['법정동코드'] = mf['시군구'].map(addr_to_code)
