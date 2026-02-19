@@ -102,7 +102,8 @@ def _load_transport_data(data_path, centroids):
     )
 
     # 지하철역 1개 = 버스정류장 10개 가중치
-    return bus_per_dong.add(subway_per_dong * 10, fill_value=0)
+    combined = bus_per_dong.add(subway_per_dong * 10, fill_value=0)
+    return combined, bus_per_dong, subway_per_dong
 
 
 def _load_safety_data(data_path):
@@ -119,7 +120,8 @@ def _load_safety_data(data_path):
     crime_inv = 1 / crime_data
     crime_norm = (crime_inv - crime_inv.min()) / (crime_inv.max() - crime_inv.min())
 
-    return (cctv_norm * 0.5 + crime_norm * 0.5).fillna(0)
+    combined = (cctv_norm * 0.5 + crime_norm * 0.5).fillna(0)
+    return combined, cctv_per_gu, crime_data
 
 
 def load_and_prepare_data():
@@ -127,10 +129,10 @@ def load_and_prepare_data():
     data_path = get_data_path()
 
     poi_pivot, dong_names, centroids = _load_poi_data(data_path)
-    transport = _load_transport_data(data_path, centroids)
+    transport, bus_per_dong, subway_per_dong = _load_transport_data(data_path, centroids)
     poi_pivot['교통'] = transport.reindex(poi_pivot.index).fillna(0)
 
-    safety_per_gu = _load_safety_data(data_path)
+    safety_per_gu, cctv_per_gu, crime_per_gu = _load_safety_data(data_path)
     dong_to_gu = {
         code: DISTRICT_CODES.get(str(code)[:5], "")
         for code in poi_pivot.index
@@ -140,7 +142,16 @@ def load_and_prepare_data():
     )
 
     poi_pivot = poi_pivot[CATEGORIES]
-    return poi_pivot, dong_names
+
+    detail = {
+        "bus_per_dong": bus_per_dong,
+        "subway_per_dong": subway_per_dong,
+        "cctv_per_gu": cctv_per_gu,
+        "crime_per_gu": crime_per_gu,
+        "dong_to_gu": dong_to_gu,
+    }
+
+    return poi_pivot, dong_names, detail
 
 
 # ========== 전월세 데이터 로드 ==========

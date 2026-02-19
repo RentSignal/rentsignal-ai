@@ -106,7 +106,7 @@ def main():
     print("=" * 50)
 
     print("\n데이터 로딩 중...")
-    pivot, dong_names = load_and_prepare_data()
+    pivot, dong_names, _ = load_and_prepare_data()
     normalized = normalize_data(pivot)
 
     print("전월세 데이터 로딩 중...")

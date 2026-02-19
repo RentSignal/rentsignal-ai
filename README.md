@@ -100,9 +100,6 @@ uv run python src/recommend.py
 # 가성비 추천 시스템 실행 (편의시설 + 전월세 가격)
 uv run python src/recommend_with_price.py
 
-# 데이터 분석
-uv run python analysis.py
-
 # API 서버 실행
 uv run uvicorn api:app --app-dir src --reload
 ```
@@ -129,11 +126,26 @@ curl -X POST http://127.0.0.1:8000/recommend \
 | sort_by | "score" = 편의시설 점수순, "value" = 가성비순 |
 | housing_type | 1 = 오피스텔/전세, 2 = 오피스텔/월세, 3 = 원룸/전세, 4 = 원룸/월세 |
 
+**응답**:
+
+| 필드 | 설명 |
+|---|---|
+| `score` | 편의시설 종합 점수 |
+| `value_score` | 가성비 점수 (sort_by=value일 때만 포함) |
+| `count` | 카테고리별 개수 (편의점, 카페, 병원, 약국, 음식점, 대형마트) |
+| `normalized` | 카테고리별 정규화 점수 (0~1) |
+| `bus` / `subway` | 교통 카테고리 세부 (버스정류장 수, 지하철역 수) |
+| `cctv` / `crime` | 치안 카테고리 세부 (CCTV 수량, 범죄 발생건수). 구 단위 |
+| `avg_deposit` | 평균 보증금 |
+| `avg_monthly` | 평균 월세, 월세일 때만 포함 |
+| `monthly_cost` | 월 환산 비용, 월세일 때만 포함 |
+| `deals` | 거래건수 |
+
 **응답 예시**:
 ```json
 {
   "housing": "오피스텔",
-  "rent_type": "전세",
+  "rent_type": "월세",
   "sort_by": "score",
   "results": [
     {
@@ -143,12 +155,13 @@ curl -X POST http://127.0.0.1:8000/recommend \
       "categories": {
         "편의점": {"count": 12, "normalized": 0.85},
         "카페": {"count": 45, "normalized": 0.92},
-        "치안": {"count": 0.65, "normalized": 0.72}
+        "교통": {"bus": 35, "subway": 1, "normalized": 0.72},
+        "치안": {"cctv": 3204, "crime": 15234, "normalized": 0.65}
       },
       "price": {
-        "avg_deposit": 5000,
-        "avg_monthly": 0,
-        "monthly_cost": 21,
+        "avg_deposit": 1000,
+        "avg_monthly": 60,
+        "monthly_cost": 64,
         "deals": 45
       }
     }

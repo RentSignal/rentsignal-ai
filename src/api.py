@@ -17,7 +17,7 @@ app_data = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pivot, dong_names = load_and_prepare_data()
+    pivot, dong_names, detail = load_and_prepare_data()
     normalized = normalize_data(pivot)
     price_data = load_rental_data(dong_names)
 
@@ -25,6 +25,7 @@ async def lifespan(app: FastAPI):
     app_data["dong_names"] = dong_names
     app_data["normalized"] = normalized
     app_data["price_data"] = price_data
+    app_data["detail"] = detail
     yield
 
 
@@ -52,6 +53,7 @@ def recommend(req: RecommendRequest):
     dong_names = app_data["dong_names"]
     normalized = app_data["normalized"]
     price_data = app_data["price_data"]
+    detail = app_data["detail"]
 
     # 유효성 검사
     if req.housing_type not in HOUSING_TYPES:
@@ -114,19 +116,34 @@ def recommend(req: RecommendRequest):
         for cat in CATEGORIES:
             raw = float(pivot.loc[dong_code, cat])
             norm = float(normalized.loc[dong_code, cat])
-            result["categories"][cat] = {
-                "count": round(raw, 2) if cat == "치안" else int(raw),
-                "normalized": round(norm, 2),
-            }
+            cat_data = {"normalized": round(norm, 2)}
+
+            if cat == "교통":
+                bus = int(detail["bus_per_dong"].get(dong_code, 0))
+                subway = int(detail["subway_per_dong"].get(dong_code, 0))
+                cat_data["bus"] = bus
+                cat_data["subway"] = subway
+            elif cat == "치안":
+                gu = detail["dong_to_gu"].get(dong_code, "")
+                cctv = int(detail["cctv_per_gu"].get(gu, 0))
+                crime = int(detail["crime_per_gu"].get(gu, 0))
+                cat_data["cctv"] = cctv
+                cat_data["crime"] = crime
+            else:
+                cat_data["count"] = int(raw)
+
+            result["categories"][cat] = cat_data
 
         if dong_code in price_info.index:
             p = price_info.loc[dong_code]
-            result["price"] = {
+            price_result = {
                 "avg_deposit": round(float(p["평균보증금"])),
-                "avg_monthly": round(float(p["평균월세"])),
-                "monthly_cost": round(float(p["월환산비용"])),
                 "deals": int(p["거래건수"]),
             }
+            if not is_jeonse:
+                price_result["avg_monthly"] = round(float(p["평균월세"]))
+                price_result["monthly_cost"] = round(float(p["월환산비용"]))
+            result["price"] = price_result
 
         results.append(result)
 
