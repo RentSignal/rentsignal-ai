@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import geopandas as gpd
+from shapely.geometry import Point
 from pathlib import Path
 
 # ========== 매핑 ==========
@@ -50,28 +52,29 @@ def get_data_path():
     return Path(__file__).parent.parent / "data"
 
 
-# 추후 GEOJSON 활용 시 수정 필요
-def _count_within_radius(centroids, points_lon, points_lat, radius_deg=0.005):
-    """각 법정동 중심 반경 내 포인트 개수 (반경 기본 ~500m)"""
-    dong_codes = centroids['LEGALDONG_CD'].values
-    c_lon = centroids['center_lon'].values
-    c_lat = centroids['center_lat'].values
+GEOJSON_PATH = Path(__file__).parent.parent / "data" / "geo" / "seoul_dong_boundaries.geojson" # 법정동 경계에 대한 GeoJSON
 
-    pts_lon = np.array(points_lon)
-    pts_lat = np.array(points_lat)
 
-    counts = {}
-    for i, code in enumerate(dong_codes):
-        dist = np.sqrt((pts_lon - c_lon[i]) ** 2 + (pts_lat - c_lat[i]) ** 2)
-        counts[code] = int((dist <= radius_deg).sum())
+def _load_dong_boundaries():
+    """GeoJSON 로드"""
+    return gpd.read_file(GEOJSON_PATH)
 
-    return pd.Series(counts)
+
+def _count_by_spatial_join(dong_gdf, points_lon, points_lat):
+    """각 법정동 내 포인트 카운트"""
+    geometry = [Point(lon, lat) for lon, lat in zip(points_lon, points_lat)]
+    points_gdf = gpd.GeoDataFrame(geometry=geometry, crs="EPSG:4326")
+
+    joined = gpd.sjoin(points_gdf, dong_gdf, how="inner", predicate="within")
+    counts = joined.groupby("LEGALDONG_CD").size()
+
+    return counts
 
 
 # ========== 편의시설 데이터 로드 ==========
 
 def _load_poi_data(data_path):
-    df = pd.read_csv(data_path / 'collect_seoul_legal_dong.csv')
+    df = pd.read_csv(data_path / 'category' / 'collect_seoul_legal_dong.csv')
     df = df[df['CL_CD'].isin(POI_CATEGORY_NAMES.keys())]
 
     counts = df.groupby(['LEGALDONG_CD', 'CL_CD']).size().reset_index(name='count')
@@ -90,15 +93,15 @@ def _load_poi_data(data_path):
     return pivot, dong_names, centroids
 
 
-def _load_transport_data(data_path, centroids):
-    bus = pd.read_csv(data_path / 'bus_stop_location.csv', encoding='cp949')
-    bus_per_dong = _count_within_radius(
-        centroids, bus['X좌표'].values, bus['Y좌표'].values
+def _load_transport_data(data_path, dong_gdf):
+    bus = pd.read_csv(data_path / 'category' / 'bus_stop_location.csv', encoding='cp949')
+    bus_per_dong = _count_by_spatial_join(
+        dong_gdf, bus['X좌표'].values, bus['Y좌표'].values
     )
 
-    subway = pd.read_csv(data_path / 'subway_info.csv', encoding='cp949')
-    subway_per_dong = _count_within_radius(
-        centroids, subway['경도'].values, subway['위도'].values
+    subway = pd.read_csv(data_path / 'category' / 'subway_info.csv', encoding='cp949')
+    subway_per_dong = _count_by_spatial_join(
+        dong_gdf, subway['경도'].values, subway['위도'].values
     )
 
     # 지하철역 1개 = 버스정류장 10개 가중치
@@ -107,10 +110,10 @@ def _load_transport_data(data_path, centroids):
 
 
 def _load_safety_data(data_path):
-    cctv = pd.read_csv(data_path / 'cctv_location.csv', encoding='cp949')
+    cctv = pd.read_csv(data_path / 'category' / 'cctv_location.csv', encoding='cp949')
     cctv_per_gu = cctv.groupby('자치구')['CCTV 수량'].sum()
 
-    crime = pd.read_csv(data_path / 'crime_rate.csv')
+    crime = pd.read_csv(data_path / 'category' / 'crime_rate.csv')
     crime_data = crime.iloc[4:29][['자치구별(2)', '2024']].copy()
     crime_data.columns = ['자치구', '범죄건수']
     crime_data['범죄건수'] = pd.to_numeric(crime_data['범죄건수'])
@@ -129,7 +132,8 @@ def load_and_prepare_data():
     data_path = get_data_path()
 
     poi_pivot, dong_names, centroids = _load_poi_data(data_path)
-    transport, bus_per_dong, subway_per_dong = _load_transport_data(data_path, centroids)
+    dong_gdf = _load_dong_boundaries()
+    transport, bus_per_dong, subway_per_dong = _load_transport_data(data_path, dong_gdf)
     poi_pivot['교통'] = transport.reindex(poi_pivot.index).fillna(0)
 
     safety_per_gu, cctv_per_gu, crime_per_gu = _load_safety_data(data_path)
@@ -174,7 +178,7 @@ def load_rental_data(dong_names):
         addr_to_code[short_addr] = code
 
     # 오피스텔
-    off = pd.read_csv(data_path / 'officetel_info.csv', encoding='cp949',
+    off = pd.read_csv(data_path / 'rental' / 'officetel_info.csv', encoding='cp949',
                        low_memory=False)
     off['보증금'] = _parse_price(off['보증금(만원)'])
     off['월세'] = _parse_price(off['월세금(만원)'])
@@ -182,7 +186,7 @@ def load_rental_data(dong_names):
     off['월환산비용'] = _calc_monthly_cost(off['보증금'], off['월세'])
 
     # 연립다세대 (원룸: 33㎡ 이하)
-    mf = pd.read_csv(data_path / 'multi_family_housing_info.csv', encoding='cp949',
+    mf = pd.read_csv(data_path / 'rental' / 'multi_family_housing_info.csv', encoding='cp949',
                       low_memory=False)
     mf['보증금'] = _parse_price(mf['보증금(만원)'])
     mf['월세'] = _parse_price(mf['월세금(만원)'])

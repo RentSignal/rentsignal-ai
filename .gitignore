@@ -9,8 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
-#python files
+# python files
 analysis.py
 
-#md files
+# md files
 OVERALL.md
+
+#cluade related files
+.claude/
+**/.claude/**
+claude.*
+**/claude.* 
+
+# archive
+archive/
