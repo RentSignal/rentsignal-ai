@@ -71,6 +71,60 @@ def _count_by_spatial_join(dong_gdf, points_lon, points_lat):
     return counts
 
 
+# ========== 위치/반경 필터용 유틸 ==========
+
+def _normalize_text(text):
+    return ''.join(str(text).split())
+
+
+def _extract_dong_centers(dong_gdf):
+    """법정동 중심 좌표 계산 (거리 필터용)"""
+    centers = dong_gdf[['LEGALDONG_CD', 'geometry']].copy()
+    centers['center_point'] = centers.geometry.representative_point()
+    centers['center_lon'] = centers['center_point'].x
+    centers['center_lat'] = centers['center_point'].y
+    centers = centers[['LEGALDONG_CD', 'center_lat', 'center_lon']]
+
+    centers['LEGALDONG_CD'] = pd.to_numeric(centers['LEGALDONG_CD'], errors='coerce')
+    centers = centers.dropna(subset=['LEGALDONG_CD']).drop_duplicates(subset=['LEGALDONG_CD'])
+    centers['LEGALDONG_CD'] = centers['LEGALDONG_CD'].astype(int)
+
+    return centers.set_index('LEGALDONG_CD')
+
+
+def _build_dong_lookup(dong_names, dong_gdf):
+    """법정동명 검색용 매핑 생성"""
+    lookup = {}
+
+    def add_alias(alias, code):
+        key = _normalize_text(alias)
+        if not key:
+            return
+        lookup.setdefault(key, set()).add(int(code))
+
+    for code, full_addr in dong_names.items():
+        code_int = int(code)
+        tokens = str(full_addr).split()
+
+        add_alias(full_addr, code_int)         # 예: 서울특별시 강남구 역삼동
+        if len(tokens) >= 2:
+            add_alias(' '.join(tokens[-2:]), code_int)  # 예: 강남구 역삼동
+        if len(tokens) >= 1:
+            add_alias(tokens[-1], code_int)    # 예: 역삼동
+
+    if 'EMD_NM' in dong_gdf.columns:
+        dong_names_only = dong_gdf[['LEGALDONG_CD', 'EMD_NM']].dropna().drop_duplicates()
+        dong_names_only['LEGALDONG_CD'] = pd.to_numeric(
+            dong_names_only['LEGALDONG_CD'], errors='coerce'
+        )
+        dong_names_only = dong_names_only.dropna(subset=['LEGALDONG_CD'])
+
+        for row in dong_names_only.itertuples(index=False):
+            add_alias(row.EMD_NM, int(row.LEGALDONG_CD))
+
+    return {key: sorted(value) for key, value in lookup.items()}
+
+
 # ========== 편의시설 데이터 로드 ==========
 
 def _load_poi_data(data_path):
@@ -84,13 +138,7 @@ def _load_poi_data(data_path):
     pivot = pivot.rename(columns=POI_CATEGORY_NAMES)
 
     dong_names = df.drop_duplicates('LEGALDONG_CD').set_index('LEGALDONG_CD')['LEGALDONG_ADDR'].to_dict()
-
-    centroids = df.groupby('LEGALDONG_CD').agg(
-        center_lon=('LC_LO', 'mean'),
-        center_lat=('LC_LA', 'mean')
-    ).reset_index()
-
-    return pivot, dong_names, centroids
+    return pivot, dong_names
 
 
 def _load_transport_data(data_path, dong_gdf):
@@ -131,8 +179,21 @@ def load_and_prepare_data():
     """편의시설 데이터 로드 및 통합 (POI + 교통 + 치안)"""
     data_path = get_data_path()
 
-    poi_pivot, dong_names, centroids = _load_poi_data(data_path)
+    poi_pivot, dong_names = _load_poi_data(data_path)
+    poi_pivot.index = poi_pivot.index.astype(int)
+    dong_names = {int(code): name for code, name in dong_names.items()}
+
     dong_gdf = _load_dong_boundaries()
+    dong_centers = _extract_dong_centers(dong_gdf).reindex(poi_pivot.index)
+    dong_lookup = _build_dong_lookup(dong_names, dong_gdf)
+
+    valid_codes = set(int(code) for code in poi_pivot.index)
+    dong_lookup = {
+        key: [code for code in codes if code in valid_codes]
+        for key, codes in dong_lookup.items()
+    }
+    dong_lookup = {key: codes for key, codes in dong_lookup.items() if codes}
+
     transport, bus_per_dong, subway_per_dong = _load_transport_data(data_path, dong_gdf)
     poi_pivot['교통'] = transport.reindex(poi_pivot.index).fillna(0)
 
@@ -153,6 +214,8 @@ def load_and_prepare_data():
         "cctv_per_gu": cctv_per_gu,
         "crime_per_gu": crime_per_gu,
         "dong_to_gu": dong_to_gu,
+        "dong_centers": dong_centers,
+        "dong_lookup": dong_lookup,
     }
 
     return poi_pivot, dong_names, detail
