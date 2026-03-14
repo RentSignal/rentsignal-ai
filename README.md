@@ -128,7 +128,7 @@ curl "http://127.0.0.1:8000/dongs?q=강&limit=20"
 curl -X POST http://127.0.0.1:8000/recommend \
   -H "Content-Type: application/json" \
   -d '{
-    "priorities": {"편의점": 1, "카페": 1, "교통": 2, "병원": 3},
+    "priorities": {"convenience_store": 1, "cafe": 1, "transport": 2, "hospital": 3},
     "sort_by": "score",
     "housing_type": 1,
     "user_dong": "강남구 역삼동",
@@ -141,7 +141,7 @@ curl -X POST http://127.0.0.1:8000/recommend \
 curl -X POST http://127.0.0.1:8000/recommend \
   -H "Content-Type: application/json" \
   -d '{
-    "priorities": {"편의점": 1, "카페": 1, "교통": 2, "병원": 3},
+    "priorities": {"convenience_store": 1, "cafe": 1, "transport": 2, "hospital": 3},
     "sort_by": "value",
     "housing_type": 2,
     "user_dong": "",
@@ -151,7 +151,7 @@ curl -X POST http://127.0.0.1:8000/recommend \
 
 | 필드 | 설명 |
 |---|---|
-| priorities | 카테고리별 순위 (1~5). 미지정 카테고리는 5순위 자동 배정. 공동 순위 가능 |
+| priorities | 카테고리별 순위 (1~5). 미지정 카테고리는 5순위 자동 배정. 공동 순위 가능. 영어 키 권장: `convenience_store`, `cafe`, `hospital`, `pharmacy`, `restaurant`, `large_mart`, `transport`, `safety` |
 | sort_by | "score" = 편의시설 점수순, "value" = 가성비순 |
 | housing_type | 1 = 오피스텔/전세, 2 = 오피스텔/월세, 3 = 원룸/전세, 4 = 원룸/월세 |
 | user_dong | 기준 법정동명. 빈 문자열이면 전체 동 기준 |

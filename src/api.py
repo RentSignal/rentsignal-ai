@@ -6,7 +6,7 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from data_loader import (
-    CATEGORIES, HOUSING_TYPES, PRIORITY_WEIGHTS,
+    CATEGORIES, CATEGORY_KEY_MAP, HOUSING_TYPES, PRIORITY_WEIGHTS,
     load_and_prepare_data, load_rental_data, normalize_data,
 )
 
@@ -57,6 +57,23 @@ EARTH_RADIUS_KM = 6371.0088
 
 def _normalize_text(text: str) -> str:
     return ''.join(str(text).split())
+
+
+def _normalize_priority_keys(priorities: dict[str, int]):
+    normalized = {}
+
+    for raw_key, priority in priorities.items():
+        category = CATEGORY_KEY_MAP.get(raw_key, raw_key)
+        if category not in CATEGORIES:
+            return None, {"error": f"알 수 없는 카테고리: {raw_key}"}
+        if priority not in PRIORITY_WEIGHTS:
+            return None, {"error": f"우선순위는 1~5만 가능합니다: {raw_key}={priority}"}
+        if category in normalized:
+            return None, {"error": f"중복 카테고리 입력입니다: {raw_key}"}
+
+        normalized[category] = priority
+
+    return normalized, None
 
 
 def _get_dong_aliases(dong_name: str):
@@ -164,11 +181,9 @@ def recommend(req: RecommendRequest):
     if req.radius_km is not None and req.radius_km <= 0:
         return {"error": "radius_km은 0보다 커야 합니다."}
 
-    for cat, priority in req.priorities.items():
-        if cat not in CATEGORIES:
-            return {"error": f"알 수 없는 카테고리: {cat}"}
-        if priority not in PRIORITY_WEIGHTS:
-            return {"error": f"우선순위는 1~5만 가능합니다: {cat}={priority}"}
+    req_priorities, priority_error = _normalize_priority_keys(req.priorities)
+    if priority_error:
+        return priority_error
 
     # 사용자 법정동 해석 (비어 있으면 전체 동 기준)
     user_dong_code, location_error = _resolve_user_dong_code(
@@ -180,7 +195,7 @@ def recommend(req: RecommendRequest):
         return location_error
 
     # 미지정 카테고리는 5순위 자동 배정
-    priorities = {cat: req.priorities.get(cat, 5) for cat in CATEGORIES}
+    priorities = {cat: req_priorities.get(cat, 5) for cat in CATEGORIES}
 
     # 편의시설 점수 계산
     scores = pd.Series(0.0, index=normalized.index)

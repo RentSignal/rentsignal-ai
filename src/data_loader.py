@@ -8,6 +8,17 @@ from pathlib import Path
 
 CATEGORIES = ['편의점', '카페', '병원', '약국', '음식점', '대형마트', '교통', '치안']
 
+CATEGORY_KEY_MAP = {
+    'convenience_store': '편의점',
+    'cafe': '카페',
+    'hospital': '병원',
+    'pharmacy': '약국',
+    'restaurant': '음식점',
+    'large_mart': '대형마트',
+    'transport': '교통',
+    'safety': '치안',
+}
+
 POI_CATEGORY_NAMES = {
     'CS2': '편의점',
     'CE7': '카페',
